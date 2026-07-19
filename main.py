@@ -5,7 +5,6 @@ from typing import Optional
 
 app = FastAPI()
 
-# "Database" - yaddaşda saxlanılan task siyahısı
 tasks = [
     {"id": 1, "title": "Buy milk", "done": False},
     {"id": 2, "title": "Learn FastAPI", "done": True},
@@ -15,25 +14,28 @@ tasks = [
 class TaskCreate(BaseModel):
     title: str = ""
 
-# Update (Yeniləmə) üçün yeni model (parametrlər məcburi deyil)
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     done: Optional[bool] = None
 
 @app.get("/")
 def read_root():
+    """API barədə əsas məlumatları qaytarır."""
     return {"name": "Task API", "version": "1.0", "endpoints": ["/tasks"]}
 
 @app.get("/health")
 def health_check():
+    """Serverin işlək vəziyyətdə olub-olmadığını yoxlayır."""
     return {"status": "ok"}
 
 @app.get("/tasks")
 def get_tasks():
+    """Bütün taskların siyahısını qaytarır."""
     return tasks
 
 @app.get("/tasks/{task_id}")
 def get_task(task_id: int):
+    """ID-sinə əsasən tək bir taskı qaytarır."""
     for task in tasks:
         if task["id"] == task_id:
             return task
@@ -41,6 +43,7 @@ def get_task(task_id: int):
 
 @app.post("/tasks", status_code=201)
 def create_task(task: TaskCreate):
+    """Yeni task yaradır."""
     if not task.title or not task.title.strip():
         return JSONResponse(status_code=400, content={"error": "Title is missing or empty"})
     
@@ -53,10 +56,9 @@ def create_task(task: TaskCreate):
     tasks.append(new_task)
     return new_task
 
-# Stage 4: Taskı yeniləmək (PUT)
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, task_update: TaskUpdate):
-    # Əgər body tamamilə boşdursa 400 xətası qaytarırıq
+    """Mövcud taskın adını və ya statusunu yeniləyir."""
     if task_update.title is None and task_update.done is None:
          return JSONResponse(status_code=400, content={"error": "Empty or invalid body"})
          
@@ -72,13 +74,12 @@ def update_task(task_id: int, task_update: TaskUpdate):
             
     return JSONResponse(status_code=404, content={"error": f"Task {task_id} not found"})
 
-# Stage 4: Taskı silmək (DELETE)
 @app.delete("/tasks/{task_id}", status_code=204)
 def delete_task(task_id: int):
+    """Taskı siyahıdan silir."""
     for i, task in enumerate(tasks):
         if task["id"] == task_id:
             del tasks[i]
-            # Uğurla silindikdə 204 statusu və boş gövdə (empty body) qaytarılır
             return Response(status_code=204)
             
     return JSONResponse(status_code=404, content={"error": f"Task {task_id} not found"})
