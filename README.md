@@ -1,24 +1,57 @@
-Markdown
-# FlyRank Task API (SQLite Version)
+```markdown
+# FlyRank Task API (PostgreSQL & Docker Version)
 
-This is a complete CRUD API for managing tasks, built with FastAPI and Python. In this assignment, the storage layer was migrated from an in-memory list to a real SQLite database.
+This is a complete CRUD API for managing tasks, built with FastAPI, Python, and backed by a real **PostgreSQL** database running inside a **Docker** container[cite: 8].
 
-## Why SQLite?
-SQLite was chosen because it requires zero setup, runs seamlessly without a dedicated server, and stores the entire database in a single `tasks.db` file. Most importantly, it provides data persistence, meaning our tasks now survive server restarts!
+## Architecture & Storage
+In this assignment, the storage layer was migrated from a local SQLite file to a containerized PostgreSQL server. 
+- **Docker & Docker Compose**: Runs the entire stack (API + Database) with a single command, eliminating environment inconsistencies ("it works on my machine")[cite: 8].
+- **Environment Secrets**: Database credentials are securely loaded from a `.env` file (git-ignored) using a template from `.env.example`[cite: 8].
+- **Data Persistence**: A Docker named volume (`taskdata`) is attached to Postgres, ensuring that tasks survive container restarts and full-stack downs[cite: 8].
 
 ## How to Run
-To run this project locally, simply execute the following command in your terminal:
+To run this project locally, follow these steps:
+
+1. Clone the repository and copy the environment template:
+   ```bash
+   cp .env.example .env
+
+```
+
+2. Start the entire stack using Docker Compose:
 ```bash
-uvicorn main:app --reload
-Note: The tasks.db database, the tasks table, and 3 seeded example tasks are created automatically on the very first run.
+docker compose up --build
 
-Example SQL Query
-Here is one of the queries I ran directly in DB Browser to verify the data:
+```
 
-SQL
-SELECT * FROM tasks;
-Result: This returned all 3 seeded tasks from the database, proving that the Python API and the DB Browser are reading from the exact same source of truth.
 
-Database Screenshot
-Below is a screenshot of the database open in DB Browser for SQLite, showing the executed query and the persistent data:
 
+(Note: The `tasks` table and 3 seeded example tasks are created automatically on the very first startup).
+
+## API Endpoints
+
+| Method | Endpoint | Description | Status Codes |
+| --- | --- | --- | --- |
+| **GET** | `/tasks` | Retrieve all tasks | `200 OK` |
+| **GET** | `/tasks/{id}` | Retrieve a specific task by ID | `200 OK`, `404 Not Found`<br> |
+| **POST** | `/tasks` | Create a new task | `201 Created`, `400 Bad Request`<br> |
+| **PUT** | `/tasks/{id}` | Update an existing task | `200 OK`, `404 Not Found`<br> |
+| **DELETE** | `/tasks/{id}` | Delete a task | `204 No Content`, `404 Not Found`<br> |
+
+## Example Request (`curl`)
+
+Here is an example test command to fetch all tasks from the running container:
+
+```bash
+curl -i http://localhost:3000/tasks
+
+```
+
+## Database Screenshot
+
+Below is a screenshot showing the data inside the running PostgreSQL database container:
+
+
+```
+
+```
