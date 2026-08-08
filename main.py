@@ -1,11 +1,30 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from repository import PostgresTaskRepository
 import os
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
+from dotenv import load_dotenv
+from supabase import create_client, Client
 
-app = FastAPI()
+# Öz yazdığın repository faylından import edirik
+from repository import PostgresTaskRepository
 
-# DATABASE_URL .env-dən oxunur.
+# just reading the .env file and loading the things to main project. We are doing it for Security.
+load_dotenv()
+
+url: str = os.environ.get("SUPABASE_URL")
+key: str = os.environ.get("SUPABASE_KEY")
+
+# these codes making a bridge for our server and supabase server.
+supabase: Client = create_client(supabase_url=url, supabase_key=key)
+
+#these codes for starting server and show what we ll see on main page.
+app = FastAPI(title="FlyRank Auth API")
+
+@app.get("/")
+def read_root():
+    return {"message": "Server running and connected to Supabase"}
+
+
+# these codes reading .env for our PostreSql base
 DATABASE_URL = os.getenv("DATABASE_URL")
 task_repo = PostgresTaskRepository(DATABASE_URL)
 
@@ -17,6 +36,7 @@ class TaskUpdate(BaseModel):
     title: str
     done: bool
 
+#these codes gives all tasks from task_repo and give it to user as JSON
 @app.get("/tasks")
 def get_tasks():
     return task_repo.get_all()
@@ -27,6 +47,7 @@ def get_task(task_id: int):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
 
 @app.post("/tasks", status_code=201)
 def create_task(task: TaskCreate):
@@ -45,3 +66,67 @@ def delete_task(task_id: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
     return
+
+    # İstifadəçidən gələn giriş məlumatlarını yoxlamaq üçün Pydantic modeli
+class UserCredentials(BaseModel):
+    email: str
+    password: str
+
+@app.post("/auth/signup", status_code=201)
+def signup(credentials: UserCredentials):
+    # Əgər e-poçt və ya parol boşdursa, 400 xətası veririk
+    if not credentials.email or not credentials.password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+    
+    try:
+        # Məlumatları Supabase-ə göndəririk ki, istifadəçini qeydiyyatdan keçirsin
+        response = supabase.auth.sign_up({
+            "email": credentials.email,
+            "password": credentials.password
+        })
+        return response.user
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/auth/login", status_code=200)
+def login(credentials: UserCredentials):
+    if not credentials.email or not credentials.password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+    
+    try:
+        # Supabase bu e-poçt və parolun doğruluğunu yoxlayır
+        response = supabase.auth.sign_in_with_password({
+            "email": credentials.email,
+            "password": credentials.password
+        })
+        # Parol doğrudursa, bizə Access Token (giriş vəsiqəsi) qaytarır
+        return {"access_token": response.session.access_token, "refresh_token": response.session.refresh_token}
+    except Exception as e:
+        # Supabase parolu səhv tapsa, 401 xətası veririk
+        raise HTTPException(status_code=401, detail="Invalid login credentials")
+
+        # --- STAGE 2: THE PUBLIC & PROTECTED GATES ---
+
+@app.get("/public/info", status_code=200)
+def get_public_info():
+    # Hər kəsə açıq olan ictimai otaq
+    return {"message": "Welcome stranger! This info is public."}
+
+@app.get("/protected/profile")
+def get_protected_profile(request: Request):
+    # Müştərinin (istifadəçinin) göndərdiyi HTTP başlıqlarından (headers) vəsiqəni axtarırıq
+    auth_header = request.headers.get("Authorization")
+    
+    # Əgər başlıq yoxdursa və ya "Bearer " sözü ilə başlamırsa (malformed), 401 xətası veririk
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Access token required")
+    
+    # "Bearer " sözündən sonrakı əsl tokeni (vəsiqəni) kəsib götürürük
+    token = auth_header.split(" ")[1]
+    
+    # Əgər "Bearer " yazılıb amma token özü boşdursa, yenə xəta veririk
+    if not token:
+        raise HTTPException(status_code=401, detail="Access token required")
+        
+    # Hələlik vəsiqənin əsl olub-olmadığını Supabase-dən soruşmuruq (Stage 3-də edəcəyik)
+    return {"message": "Sənin vəsiqən var, amma hələ ki təsdiqlənməyib!"}
