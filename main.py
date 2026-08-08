@@ -114,19 +114,30 @@ def get_public_info():
 
 @app.get("/protected/profile")
 def get_protected_profile(request: Request):
-    # Müştərinin (istifadəçinin) göndərdiyi HTTP başlıqlarından (headers) vəsiqəni axtarırıq
+    # 1. Vəsiqəni başlıqlardan axtarırıq (Köhnə məntiq)
     auth_header = request.headers.get("Authorization")
-    
-    # Əgər başlıq yoxdursa və ya "Bearer " sözü ilə başlamırsa (malformed), 401 xətası veririk
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Access token required")
     
-    # "Bearer " sözündən sonrakı əsl tokeni (vəsiqəni) kəsib götürürük
     token = auth_header.split(" ")[1]
-    
-    # Əgər "Bearer " yazılıb amma token özü boşdursa, yenə xəta veririk
     if not token:
         raise HTTPException(status_code=401, detail="Access token required")
         
-    # Hələlik vəsiqənin əsl olub-olmadığını Supabase-dən soruşmuruq (Stage 3-də edəcəyik)
-    return {"message": "Sənin vəsiqən var, amma hələ ki təsdiqlənməyib!"}
+    # 2. YENİ: Vəsiqəni (token) Supabase-ə yoxlatdırırıq
+    try:
+        # Supabase-ə şəbəkə sorğusu gedir, əgər token saxtadırsa xəta (Exception) atacaq
+        user_response = supabase.auth.get_user(token)
+        user = user_response.user
+        
+        # Hər şey qaydasındadırsa, istifadəçinin id və email kimi icazə verilən məlumatlarını qaytarırıq
+        return {
+            "message": "Token is valid!",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "created_at": user.created_at
+            }
+        }
+    except Exception as e:
+        # Token saxtadırsa, dəyişdirilibsə və ya vaxtı keçibsə dərhal 401 qovulma xətası veririk
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
