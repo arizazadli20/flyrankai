@@ -1,24 +1,33 @@
-Markdown
-# FlyRank Task API (SQLite Version)
+# FlyRank Auth API - Week 2 (A4)
 
-This is a complete CRUD API for managing tasks, built with FastAPI and Python. In this assignment, the storage layer was migrated from an in-memory list to a real SQLite database.
+This is a secure backend API built with FastAPI and Supabase Auth. It handles user registration, login, logout, and protects specific routes using JWT (JSON Web Token) verification.
 
-## Why SQLite?
-SQLite was chosen because it requires zero setup, runs seamlessly without a dedicated server, and stores the entire database in a single `tasks.db` file. Most importantly, it provides data persistence, meaning our tasks now survive server restarts!
+## Setup Instructions
 
-## How to Run
-To run this project locally, simply execute the following command in your terminal:
-```bash
-uvicorn main:app --reload
-Note: The tasks.db database, the tasks table, and 3 seeded example tasks are created automatically on the very first run.
+1.  **Clone the repository:**
+    ```bash
+    git clone <your_github_repo_link>
+    ```
+2.  **Install dependencies:**
+    ```bash
+    pip install fastapi uvicorn supabase python-dotenv pydantic
+    ```
+3.  **Environment Variables:**
+    *   Create a `.env` file in the root directory.
+    *   Copy the variables from `.env.example` and replace them with your actual Supabase project URL and anon key.
+4.  **Run the Server:**
+    ```bash
+    uvicorn main:app --reload
+    ```
 
-Example SQL Query
-Here is one of the queries I ran directly in DB Browser to verify the data:
+## Endpoints Overview
 
-SQL
-SELECT * FROM tasks;
-Result: This returned all 3 seeded tasks from the database, proving that the Python API and the DB Browser are reading from the exact same source of truth.
+| Route | Method | Purpose | Auth Required |
+| :--- | :--- | :--- | :--- |
+| `/auth/signup` | POST | Create a new user account | No |
+| `/auth/login` | POST | Authenticate & return a JWT | No |
+| `/public/info` | GET | Read public, open data | No |
+| `/protected/profile` | GET | Read private profile data | Yes (Bearer Token) |
 
-Database Screenshot
-Below is a screenshot of the database open in DB Browser for SQLite, showing the executed query and the persistent data:
-
+## Swagger UI
+You can interact with the API and test the authentication flow directly through the Swagger UI at `http://localhost:8000/docs`. A lock icon indicates protected routes.
