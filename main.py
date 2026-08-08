@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -22,7 +23,6 @@ app = FastAPI(title="FlyRank Auth API")
 @app.get("/")
 def read_root():
     return {"message": "Server running and connected to Supabase"}
-
 
 # these codes reading .env for our PostreSql base
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -48,7 +48,6 @@ def get_task(task_id: int):
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
-
 @app.post("/tasks", status_code=201)
 def create_task(task: TaskCreate):
     return task_repo.create(task)
@@ -67,19 +66,16 @@ def delete_task(task_id: int):
         raise HTTPException(status_code=404, detail="Task not found")
     return
 
-    # İstifadəçidən gələn giriş məlumatlarını yoxlamaq üçün Pydantic modeli
+# İstifadəçidən gələn giriş məlumatlarını yoxlamaq üçün Pydantic modeli
 class UserCredentials(BaseModel):
     email: str
     password: str
 
 @app.post("/auth/signup", status_code=201)
 def signup(credentials: UserCredentials):
-    # Əgər e-poçt və ya parol boşdursa, 400 xətası veririk
     if not credentials.email or not credentials.password:
         raise HTTPException(status_code=400, detail="Email and password are required")
-    
     try:
-        # Məlumatları Supabase-ə göndəririk ki, istifadəçini qeydiyyatdan keçirsin
         response = supabase.auth.sign_up({
             "email": credentials.email,
             "password": credentials.password
@@ -92,52 +88,47 @@ def signup(credentials: UserCredentials):
 def login(credentials: UserCredentials):
     if not credentials.email or not credentials.password:
         raise HTTPException(status_code=400, detail="Email and password are required")
-    
     try:
-        # Supabase bu e-poçt və parolun doğruluğunu yoxlayır
         response = supabase.auth.sign_in_with_password({
             "email": credentials.email,
             "password": credentials.password
         })
-        # Parol doğrudursa, bizə Access Token (giriş vəsiqəsi) qaytarır
         return {"access_token": response.session.access_token, "refresh_token": response.session.refresh_token}
     except Exception as e:
-        # Supabase parolu səhv tapsa, 401 xətası veririk
         raise HTTPException(status_code=401, detail="Invalid login credentials")
 
-        # --- STAGE 2: THE PUBLIC & PROTECTED GATES ---
+
+# --- STAGE 4: AUTOMATED GUARD (DEPENDENCY) ---
+
+# Bu, Swagger UI-da "Authorize" düyməsini yaradacaq sehrli alətdir
+security = HTTPBearer()
+
+# Mərkəzi yoxlanış məntəqəsi (Mühafizəçi)
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    # HTTPBearer avtomatik olaraq "Bearer " sözünü kəsir, bizə ancaq təmiz tokeni verir
+    token = credentials.credentials
+    try:
+        # Tokeni Supabase-də yoxlayırıq
+        user_response = supabase.auth.get_user(token)
+        # Hər şey yaxşıdırsa, istifadəçi obyektini qaytarırıq
+        return user_response.user
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 @app.get("/public/info", status_code=200)
 def get_public_info():
     # Hər kəsə açıq olan ictimai otaq
     return {"message": "Welcome stranger! This info is public."}
 
+# Görürsən, qorunan qapının kodu necə qısaldı?
+# Sadəcə "Depends(verify_token)" yazmaqla qapını bağladıq!
 @app.get("/protected/profile")
-def get_protected_profile(request: Request):
-    # 1. Vəsiqəni başlıqlardan axtarırıq (Köhnə məntiq)
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Access token required")
-    
-    token = auth_header.split(" ")[1]
-    if not token:
-        raise HTTPException(status_code=401, detail="Access token required")
-        
-    # 2. YENİ: Vəsiqəni (token) Supabase-ə yoxlatdırırıq
-    try:
-        # Supabase-ə şəbəkə sorğusu gedir, əgər token saxtadırsa xəta (Exception) atacaq
-        user_response = supabase.auth.get_user(token)
-        user = user_response.user
-        
-        # Hər şey qaydasındadırsa, istifadəçinin id və email kimi icazə verilən məlumatlarını qaytarırıq
-        return {
-            "message": "Token is valid!",
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "created_at": user.created_at
-            }
+def get_protected_profile(current_user = Depends(verify_token)):
+    return {
+        "message": "Token is valid!",
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "created_at": current_user.created_at
         }
-    except Exception as e:
-        # Token saxtadırsa, dəyişdirilibsə və ya vaxtı keçibsə dərhal 401 qovulma xətası veririk
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    }
