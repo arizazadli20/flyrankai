@@ -1,15 +1,15 @@
-import psycopg
 import time
+import psycopg
 
-class PostgresTaskRepository:
+
+class TaskRepository:
     def __init__(self, db_url: str):
         self.db_url = db_url
-        self._init_db()
+        self.setup_db()
 
-    def _init_db(self):
-        # Bazanın tam oyanmasını gözləmək üçün yoxlama (retry) məntiqi
-        retries = 5
-        while retries > 0:
+    def setup_db(self):
+        attempts = 5
+        while attempts > 0:
             try:
                 with psycopg.connect(self.db_url) as conn:
                     with conn.cursor() as cur:
@@ -22,61 +22,66 @@ class PostgresTaskRepository:
                         """)
                         cur.execute("SELECT COUNT(*) FROM tasks")
                         if cur.fetchone()[0] == 0:
-                            seed_tasks = [("Learn Docker", True), ("Setup Postgres", False), ("Write YAML", False)]
-                            cur.executemany("INSERT INTO tasks (title, done) VALUES (%s, %s)", seed_tasks)
+                            initial_tasks = [
+                                ("Learn Docker", True),
+                                ("Setup Postgres", False),
+                                ("Write YAML", False),
+                            ]
+                            cur.executemany(
+                                "INSERT INTO tasks (title, done) VALUES (%s, %s)",
+                                initial_tasks,
+                            )
                         conn.commit()
-                # Hər şey uğurludursa dövrdən çıxır
-                break 
+                break
             except psycopg.OperationalError:
-                print(f"Database hələ hazır deyil, 2 saniyə gözlənilir... ({retries} cəhd qaldı)")
+                print(f"Database not ready yet, retrying in 2s... ({attempts} attempts left)")
                 time.sleep(2)
-                retries -= 1
+                attempts -= 1
         else:
-            print("XƏTA: Verilənlər bazasına qoşulmaq mümkün olmadı.")
+            print("Error: Could not connect to the database.")
 
-    def get_all(self):
+    def get_tasks(self):
         with psycopg.connect(self.db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT id, title, done FROM tasks")
-                return [{"id": row[0], "title": row[1], "done": row[2]} for row in cur.fetchall()]
+                rows = cur.fetchall()
+                return [{"id": r[0], "title": r[1], "done": r[2]} for r in rows]
 
-    def get_by_id(self, task_id):
-        # Təhlükəsizlik üçün %s parametri istifadə olunur.
+    def get_task(self, task_id: int):
         with psycopg.connect(self.db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT id, title, done FROM tasks WHERE id = %s", (task_id,))
                 row = cur.fetchone()
-                if row:
-                    return {"id": row[0], "title": row[1], "done": row[2]}
-                return None
+                if not row:
+                    return None
+                return {"id": row[0], "title": row[1], "done": row[2]}
 
-    def create(self, task):
-        # RETURNING bölməsi vasitəsilə yeni yaradılan id-ni geri alırıq.
+    def add_task(self, task):
         with psycopg.connect(self.db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING id", 
-                    (task.title, task.done)
+                    "INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING id",
+                    (task.title, task.done),
                 )
                 new_id = cur.fetchone()[0]
                 conn.commit()
                 return {"id": new_id, "title": task.title, "done": task.done}
 
-    def update(self, task_id, task):
+    def update_task(self, task_id: int, task):
         with psycopg.connect(self.db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE tasks SET title = %s, done = %s WHERE id = %s RETURNING id", 
-                    (task.title, task.done, task_id)
+                    "UPDATE tasks SET title = %s, done = %s WHERE id = %s RETURNING id",
+                    (task.title, task.done, task_id),
                 )
-                updated_row = cur.fetchone()
+                updated = cur.fetchone()
                 conn.commit()
-                return updated_row
+                return updated
 
-    def delete(self, task_id):
+    def delete_task(self, task_id: int):
         with psycopg.connect(self.db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM tasks WHERE id = %s RETURNING id", (task_id,))
-                deleted_row = cur.fetchone()
+                deleted = cur.fetchone()
                 conn.commit()
-                return deleted_row
+                return deleted
